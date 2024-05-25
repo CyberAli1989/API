@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Auth\Otp;
 
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Validator;
 
 class OTPCodeRequest extends FormRequest
 {
@@ -14,6 +16,20 @@ class OTPCodeRequest extends FormRequest
         return true;
     }
 
+    public function prepareForValidation()
+    {
+        if (Validator::make($this->all(), [
+            'login' => ['required', 'string', 'email']
+        ])->fails())
+            $this->merge([
+                'type' => User::PHONE_Type,
+            ]);
+        else
+            $this->merge([
+                'type' => User::EMAIL_Type,
+            ]);
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
@@ -22,8 +38,8 @@ class OTPCodeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'code' => ['required' , 'string' , 'exists:otp_codes,code'],
-            'login' => ['required' , 'string' , 'exists:users,email']
+            'code' => ['required', 'string', 'exists:otp_codes,code'],
+            'login' => ['required', 'string', $this['type'] === User::EMAIL_Type ? 'exists:users,email' : 'exists:users,phone']
         ];
     }
 }

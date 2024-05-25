@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\Otp\GenerateOtpRequest;
 use App\Http\Requests\Auth\Otp\OTPCodeRequest;
 use App\Http\Requests\Auth\RegisterReqesut;
+use App\Lib\Sms\SmsIr;
 use App\Mail\VerifyCode;
 use App\Models\OtpCode;
 use App\Models\User;
@@ -17,25 +18,33 @@ use function Laravel\Prompts\error;
 
 class AuthController extends Controller
 {
-    public function register(RegisterReqesut $reqesut)
+    public function register(RegisterReqesut $request)
     {
-        $create = $reqesut->only(['email', 'name']);
-        $create['password'] = Hash::make($reqesut['password']);
+        $create = $request->only(['name']);
+        if ($request['type'] === User::EMAIL_Type)
+            $create['email'] = $request['login'];
+        else
+            $create['phone'] = $request['login'];
+        $create['password'] = Hash::make($request['password']);
         $user = User::create($create);
         if ($user) {
             $code = rand(11111, 99999);
             OtpCode::create([
                 'code' => $code,
-                'login' => $user->email,
+                'login' => $request['login'],
                 'expired_at' => Carbon::now()->addMinutes(2),
             ]);
-            if (env('MAIL_STATUS'))
+            if ($request['type'] === User::EMAIL_Type && env('MAIL_STATUS'))
                 Mail::to($user->email)->send(new VerifyCode($code));
+            if ($request['type'] === User::PHONE_Type && env('SMS_STATUS')) {
+                $sms = new SmsIr();
+                $sms->verifyCode($request['login'], $code);
+            }
             return response()->json([
                 'success' => true,
                 'data' => [],
                 'message' => [
-                    'success' => 'کد تایید به ایمیل شما ارسال شد.'
+                    'success' => $request['type'] === User::EMAIL_Type ? 'کد تایید به ایمیل شما ارسال شد' : 'کد تایید به شماره همراه شما ارسال شد.'
                 ],
             ]);
         } else
@@ -46,9 +55,12 @@ class AuthController extends Controller
 
     public function verifyCode(OTPCodeRequest $request)
     {
-        $user = User::firstWhere('email', $request['login']);
+        if ($request['type'] === User::EMAIL_Type)
+            $user = User::firstWhere('email', $request['login']);
+        else
+            $user = User::firstWhere('phone', $request['login']);
         if ($user) {
-            $code = OtpCode::firstWhere('login', $user->email);
+            $code = OtpCode::firstWhere('login', $request['login']);
             if ($code->code == $request['code']) {
                 if ($code->expired_at > Carbon::now()) {
                     $token = $user->createToken('token')->plainTextToken;
@@ -57,7 +69,7 @@ class AuthController extends Controller
                         'success' => true,
                         'data' => [
                             'token' => $token,
-                            'user' => $user->only(['email', 'name', 'created_at'])
+                            'user' => $user->only(['email', 'phone', 'name', 'created_at'])
                         ]
                     ]);
                 } else
@@ -86,10 +98,13 @@ class AuthController extends Controller
 
     public function generateOtp(GenerateOtpRequest $request)
     {
-        $user = User::firstWhere('email', $request['login']);
+        if ($request['type'] === User::EMAIL_Type)
+            $user = User::firstWhere('email', $request['login']);
+        else
+            $user = User::firstWhere('phone', $request['login']);
         if ($user) {
             $code = rand(11111, 99999);
-            $otp = OtpCode::firstWhere('login', $user->email);
+            $otp = OtpCode::firstWhere('login', $request['login']);
             if ($otp) {
                 $otp->update([
                     'attempt' => $otp->attempt + 1,
@@ -98,19 +113,29 @@ class AuthController extends Controller
             } else {
                 OtpCode::create([
                     'code' => $code,
-                    'login' => $user->email,
+                    'login' => $request['login'],
                     'expired_at' => Carbon::now()->addMinutes(2),
                 ]);
             }
-            if (env('MAIL_STATUS'))
+            if ($request['type'] === User::EMAIL_Type && env('MAIL_STATUS'))
                 Mail::to($user->email)->send(new VerifyCode($code));
+            if ($request['type'] === User::PHONE_Type && env('SMS_STATUS')) {
+                $sms = new SmsIr();
+                $sms->verifyCode($request['login'], $code);
+            }
             return response()->json([
                 'success' => true,
                 'data' => [],
                 'message' => [
-                    'success' => 'کد تایید به ایمیل شما ارسال شد.'
+                    'success' => $request['type'] === User::EMAIL_Type ? 'کد تایید به ایمیل شما ارسال شد' : 'کد تایید به شماره همراه شما ارسال شد.'
                 ],
             ]);
-        }
+        } else
+            return response()->json([
+                'success' => false,
+                'message' => [
+                    'not_found' => 'کاربر یافت نشد.'
+                ]
+            ], 422);
     }
 }
