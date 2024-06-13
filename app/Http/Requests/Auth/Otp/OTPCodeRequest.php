@@ -38,7 +38,7 @@ class OTPCodeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'code' => ['required', 'string', 'exists:otp_codes,code'],
+            'code' => ['required', 'integer', 'exists:otp_codes,code'],
             'login' => ['required', 'string', $this['type'] === User::EMAIL_Type ? 'exists:users,email' : 'exists:users,phone']
         ];
     }

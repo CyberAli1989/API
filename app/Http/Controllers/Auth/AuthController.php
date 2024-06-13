@@ -80,7 +80,7 @@ class AuthController extends Controller
                         'message' => [
                             'expired' => 'کد تایید ارسالی فاقد اعتبار می باشد.'
                         ]
-                    ]);
+                    ], 422);
             } else
                 return response()->json([
                     'success' => false,
